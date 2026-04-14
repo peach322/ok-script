@@ -2344,6 +2344,10 @@
             <source>Recording will start when window '{hwnd_name}' becomes active.</source>
             <translation>Recording will start when window '{hwnd_name}' becomes active.</translation>
         </message>
+        <message>
+            <source>Guide</source>
+            <translation>Guide</translation>
+        </message>
     </context>
     <context>
         <name>CreateTaskDialog</name>

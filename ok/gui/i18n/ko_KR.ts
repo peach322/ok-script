@@ -1336,11 +1336,11 @@
         </message>
         <message>
             <source>Target window active: Recording resumed</source>
-            <translation type="unfinished" />
+            <translation>대상 창 활성화: 녹화 재개됨</translation>
         </message>
         <message>
             <source>Target window inactive: Recording paused</source>
-            <translation type="unfinished" />
+            <translation>대상 창 비활성: 녹화 일시 정지됨</translation>
         </message>
     </context>
     <context>
@@ -2342,6 +2342,10 @@
         <message>
             <source>Recording will start when window '{hwnd_name}' becomes active.</source>
             <translation>창 '{hwnd_name}'이(가) 활성화되면 녹화가 시작됩니다.</translation>
+        </message>
+        <message>
+            <source>Guide</source>
+            <translation>가이드</translation>
         </message>
     </context>
     <context>

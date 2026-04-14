@@ -1,8 +1,8 @@
 import os
 
-from PySide6.QtCore import QFileSystemWatcher
+from PySide6.QtCore import QFileSystemWatcher, QUrl
 from PySide6.QtCore import Qt, QSize, QRect
-from PySide6.QtGui import QSyntaxHighlighter, QTextCharFormat, QFont, QColor, QPainter
+from PySide6.QtGui import QSyntaxHighlighter, QTextCharFormat, QFont, QColor, QPainter, QDesktopServices
 from PySide6.QtWidgets import QWidget, QHBoxLayout, QVBoxLayout, QMessageBox, QTreeWidgetItem, QFileDialog
 from qfluentwidgets import MessageBox, PlainTextEdit, PushButton, FluentIcon, PrimaryPushButton, SearchLineEdit, \
     BodyLabel, ComboBox, RoundMenu, Action, TreeWidget, TransparentDropDownPushButton, CheckBox
@@ -370,6 +370,12 @@ class EditTaskTab(QWidget):
         self.record_button.clicked.connect(self.toggle_record)
         self.tools_layout.addWidget(self.record_button)
         
+        self.guide_button = PushButton(self)
+        self.guide_button.setText(self.tr("Guide"))
+        self.guide_button.setIcon(FluentIcon.HELP)
+        self.guide_button.clicked.connect(self.open_guide)
+        self.tools_layout.addWidget(self.guide_button)
+        
         self.top_layout.addLayout(self.tools_layout)
         
         # Hide save and delete actions initially
@@ -596,6 +602,9 @@ class EditTaskTab(QWidget):
                 main_window.switchTo(main_window.onetime_tab)
         except Exception as e:
             logger.error(f"Error switching tab: {e}")
+
+    def open_guide(self):
+        QDesktopServices.openUrl(QUrl("https://github.com/ok-oldking/ok-py"))
 
     def toggle_record(self):
         from .RecordScript import recorder

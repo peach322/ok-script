@@ -2338,6 +2338,10 @@
             <source>Recording will start when window '{hwnd_name}' becomes active.</source>
             <translation>在視窗 '{hwnd_name}' 處於活動狀態時，將開始錄製。</translation>
         </message>
+        <message>
+            <source>Guide</source>
+            <translation>指南</translation>
+        </message>
     </context>
     <context>
         <name>CreateTaskDialog</name>

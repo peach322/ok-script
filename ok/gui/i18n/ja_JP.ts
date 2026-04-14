@@ -1327,11 +1327,11 @@
         </message>
         <message>
             <source>Target window active: Recording resumed</source>
-            <translation type="unfinished" />
+            <translation>対象ウィンドウでアクティブ: 録画を再開しました</translation>
         </message>
         <message>
             <source>Target window inactive: Recording paused</source>
-            <translation type="unfinished" />
+            <translation>対象ウィンドウで非アクティブ: 録画を一時停止しました</translation>
         </message>
     </context>
     <context>
@@ -2333,6 +2333,10 @@
         <message>
             <source>Recording will start when window '{hwnd_name}' becomes active.</source>
             <translation>ウィンドウ '{hwnd_name}' がアクティブになると録画を開始します。</translation>
+        </message>
+        <message>
+            <source>Guide</source>
+            <translation>ガイド</translation>
         </message>
     </context>
     <context>

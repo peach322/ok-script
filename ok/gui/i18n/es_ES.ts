@@ -1335,11 +1335,11 @@
         </message>
         <message>
             <source>Target window active: Recording resumed</source>
-            <translation type="unfinished" />
+            <translation>Ventana de destino activa: Grabación reanudada</translation>
         </message>
         <message>
             <source>Target window inactive: Recording paused</source>
-            <translation type="unfinished" />
+            <translation>Ventana de destino inactiva: Grabación pausada</translation>
         </message>
     </context>
     <context>
@@ -2341,6 +2341,10 @@
         <message>
             <source>Recording will start when window '{hwnd_name}' becomes active.</source>
             <translation>La grabación comenzará cuando la ventana '{hwnd_name}' esté activa.</translation>
+        </message>
+        <message>
+            <source>Guide</source>
+            <translation>Guía</translation>
         </message>
     </context>
     <context>
