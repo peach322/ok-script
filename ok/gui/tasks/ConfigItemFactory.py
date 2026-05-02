@@ -15,7 +15,7 @@ def config_widget(config_type, config_desc, config, key, value, task):
     if the_type:
         if the_type['type'] == 'drop_down':
             return LabelAndDropDown(config_desc, the_type['options'], config, key)
-        elif the_type['type'] == 'multi_selection':
+        elif the_type['type'] == 'multi_selection' or the_type['type'] == 'recheck_box':
             return LabelAndMultiSelection(config_desc, the_type['options'], config, key)
         elif the_type['type'] == 'global':
             config = task.get_global_config(key)
