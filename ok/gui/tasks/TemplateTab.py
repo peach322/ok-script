@@ -359,7 +359,7 @@ class TemplateTab(QWidget):
     def __init__(self, config: Config):
         super().__init__()
         self.setObjectName("TemplateTab")
-        self.template_tab_config = config.get('template_tab', {
+        self.template_tab_config = Config('template_tab', {
             'generate_label_enum': False,
             'label_enum_relative_path': 'ok_tasks/LabelEnum.py'
         })
