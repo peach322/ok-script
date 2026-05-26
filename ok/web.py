@@ -13,6 +13,11 @@ from urllib.parse import urlparse
 
 LOCALHOST = "127.0.0.1"
 ALL_INTERFACES = "0.0.0.0"
+CONFIG_PATCH_SCHEMA = {
+    "runtime": {"debug", "use_gui"},
+    "device": {"preferred", "capture", "interaction"},
+    "browser": {"url", "nick", "resolution"},
+}
 
 
 class FrontendRuntimeAPI:
@@ -202,6 +207,56 @@ def _bool_value(value):
     return bool(value)
 
 
+def _validate_config_patch(config_patch):
+    if not isinstance(config_patch, dict):
+        raise ValueError("Request body must be a JSON object")
+    unknown_sections = set(config_patch) - set(CONFIG_PATCH_SCHEMA)
+    if unknown_sections:
+        raise ValueError(f"Unsupported config section(s): {', '.join(sorted(unknown_sections))}")
+
+    runtime_patch = config_patch.get("runtime")
+    if runtime_patch is not None:
+        if not isinstance(runtime_patch, dict):
+            raise ValueError("runtime config patch must be an object")
+        unknown_runtime_fields = set(runtime_patch) - CONFIG_PATCH_SCHEMA["runtime"]
+        if unknown_runtime_fields:
+            raise ValueError(f"Unsupported runtime field(s): {', '.join(sorted(unknown_runtime_fields))}")
+        for key in ("debug", "use_gui"):
+            if key in runtime_patch and not isinstance(runtime_patch[key], bool):
+                raise ValueError(f"runtime.{key} must be a boolean")
+
+    device_patch = config_patch.get("device")
+    if device_patch is not None:
+        if not isinstance(device_patch, dict):
+            raise ValueError("device config patch must be an object")
+        unknown_device_fields = set(device_patch) - CONFIG_PATCH_SCHEMA["device"]
+        if unknown_device_fields:
+            raise ValueError(f"Unsupported device field(s): {', '.join(sorted(unknown_device_fields))}")
+        for key in ("preferred", "capture", "interaction"):
+            if key in device_patch and device_patch[key] is not None and not isinstance(device_patch[key], str):
+                raise ValueError(f"device.{key} must be a string or null")
+
+    browser_patch = config_patch.get("browser")
+    if browser_patch is not None:
+        if not isinstance(browser_patch, dict):
+            raise ValueError("browser config patch must be an object")
+        unknown_browser_fields = set(browser_patch) - CONFIG_PATCH_SCHEMA["browser"]
+        if unknown_browser_fields:
+            raise ValueError(f"Unsupported browser field(s): {', '.join(sorted(unknown_browser_fields))}")
+        if "url" in browser_patch and browser_patch["url"] is not None and not isinstance(browser_patch["url"], str):
+            raise ValueError("browser.url must be a string or null")
+        if "nick" in browser_patch and browser_patch["nick"] is not None and not isinstance(browser_patch["nick"], str):
+            raise ValueError("browser.nick must be a string or null")
+        if "resolution" in browser_patch:
+            resolution = browser_patch["resolution"]
+            if (
+                not isinstance(resolution, (list, tuple))
+                or len(resolution) != 2
+                or not all(isinstance(v, int) and v > 0 for v in resolution)
+            ):
+                raise ValueError("browser.resolution must be [width, height] with positive integers")
+
+
 class FrontendRequestHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, runtime_api=None, runtime_stream=None, directory=None, **kwargs):
         self.runtime_api = runtime_api or FrontendRuntimeAPI()
@@ -295,8 +350,7 @@ class FrontendRequestHandler(SimpleHTTPRequestHandler):
         if path == "/api/config/update":
             try:
                 payload = self._read_json_body()
-                if not isinstance(payload, dict):
-                    raise ValueError("Request body must be a JSON object")
+                _validate_config_patch(payload)
                 result = self.runtime_api.update_config(payload)
                 if self.runtime_stream:
                     self.runtime_stream.publish_event("config_event", {"action": "update"})

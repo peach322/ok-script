@@ -545,12 +545,20 @@ class OK:
     def update_runtime_config(self, config_patch):
         if not isinstance(config_patch, dict):
             raise ValueError("config patch must be an object")
+        allowed_sections = {"browser", "device", "runtime"}
+        unknown_sections = set(config_patch) - allowed_sections
+        if unknown_sections:
+            raise ValueError(f"unsupported config section(s): {', '.join(sorted(unknown_sections))}")
         applied = {}
 
         browser_patch = config_patch.get("browser")
         if browser_patch is not None:
             if not isinstance(browser_patch, dict):
                 raise ValueError("browser config patch must be an object")
+            allowed_browser_fields = {"url", "nick", "resolution"}
+            unknown_browser_fields = set(browser_patch) - allowed_browser_fields
+            if unknown_browser_fields:
+                raise ValueError(f"unsupported browser field(s): {', '.join(sorted(unknown_browser_fields))}")
             browser_config = self.config.setdefault("browser", {})
             browser_config.update(browser_patch)
             applied["browser"] = dict(browser_config)
@@ -564,6 +572,10 @@ class OK:
         if device_patch is not None:
             if not isinstance(device_patch, dict):
                 raise ValueError("device config patch must be an object")
+            allowed_device_fields = {"preferred", "capture", "interaction"}
+            unknown_device_fields = set(device_patch) - allowed_device_fields
+            if unknown_device_fields:
+                raise ValueError(f"unsupported device field(s): {', '.join(sorted(unknown_device_fields))}")
             if self.device_manager is None:
                 raise RuntimeError("Device manager is not initialized")
             if "preferred" in device_patch:
@@ -582,6 +594,10 @@ class OK:
         if runtime_patch is not None:
             if not isinstance(runtime_patch, dict):
                 raise ValueError("runtime config patch must be an object")
+            allowed_runtime_fields = {"debug", "use_gui"}
+            unknown_runtime_fields = set(runtime_patch) - allowed_runtime_fields
+            if unknown_runtime_fields:
+                raise ValueError(f"unsupported runtime field(s): {', '.join(sorted(unknown_runtime_fields))}")
             if "debug" in runtime_patch:
                 self.config["debug"] = bool(runtime_patch["debug"])
             if "use_gui" in runtime_patch:

@@ -179,6 +179,27 @@ class TestWebRuntimeApi(unittest.TestCase):
         self.assertEqual("Browser2", payload["data"]["config"]["browser"]["nick"])
         self.assertTrue(payload["data"]["config"]["runtime"]["debug"])
 
+    def test_config_update_rejects_unsupported_section(self):
+        status_code, payload = self._request_json("POST", "/api/config/update", {"invalid": {"k": 1}})
+        self.assertEqual(400, status_code)
+        self.assertEqual(400, payload["code"])
+        self.assertIn("Unsupported config section", payload["message"])
+        self.assertFalse(any(call[0] == "config_update" for call in self.calls))
+
+    def test_config_update_rejects_unsupported_field(self):
+        status_code, payload = self._request_json("POST", "/api/config/update", {"runtime": {"bad": True}})
+        self.assertEqual(400, status_code)
+        self.assertEqual(400, payload["code"])
+        self.assertIn("Unsupported runtime field", payload["message"])
+        self.assertFalse(any(call[0] == "config_update" for call in self.calls))
+
+    def test_config_update_rejects_invalid_runtime_type(self):
+        status_code, payload = self._request_json("POST", "/api/config/update", {"runtime": {"debug": "true"}})
+        self.assertEqual(400, status_code)
+        self.assertEqual(400, payload["code"])
+        self.assertIn("runtime.debug must be a boolean", payload["message"])
+        self.assertFalse(any(call[0] == "config_update" for call in self.calls))
+
     def test_runtime_websocket_stream_pushes_task_and_log_events(self):
         ws_key = base64.b64encode(uuid.uuid4().bytes).decode("ascii")
         sock = socket.create_connection(("127.0.0.1", self.port), timeout=5)

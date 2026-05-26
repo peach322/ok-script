@@ -11,7 +11,7 @@
 - `POST /api/runtime/stop`：停止指定任务或全量停止（禁用队列/触发任务并暂停执行器）。
 - `GET /api/config/get`：获取 runtime/browser/device 当前配置快照。
 - `POST /api/config/update`：更新 runtime/browser/device 配置补丁并返回最新配置。
-- `GET /ws/runtime`：建立 websocket 连接并接收 `hello`/`runtime_status`/`task_event`/`log`/`error` 事件。
+- `GET /ws/runtime`：建立 websocket 连接并接收 `hello`/`runtime_status`/`task_event`/`config_event`/`log`/`error` 事件。
 
 ## Runtime Flow
 1. `OK.startup_deploy_frontend()` 注入 `FrontendRuntimeAPI` 回调。
@@ -119,12 +119,16 @@
 - [ ] TODO：配置面板对接 API。
 
 ### Backend
-- [~] IN PROGRESS：已复用 runtime/device/browser 现有配置结构，仍需补充字段级校验与白名单策略。
+- [x] DONE：已补充 `runtime/device/browser` 字段级白名单与类型校验（在 web API 层拦截非法 patch）。
+- [ ] TODO：补充更细粒度错误码映射（当前以 message 文本区分错误类型）。
+- 优先级：P2
+- 依赖：无
 
 ### Tests
 - [x] DONE：新增 config get/update API 测试。
 - 相关文件：`/home/runner/work/ok-script/ok-script/tests/test_web_runtime_api.py`
-- [ ] TODO：补充非法字段/非法类型/设备不可用场景测试。
+- [x] DONE：新增非法 section/非法字段/非法类型测试（返回 400）。
+- [ ] TODO：补充设备不可用场景测试（`device_manager` 未初始化时 update 失败路径）。
 - 优先级：P1
 - 依赖：无
 
@@ -134,7 +138,7 @@
 - 依赖：runtime status panel 需要展示配置变更失败原因。
 
 ### Next Step
-- [~] IN PROGRESS：梳理可安全热更新字段白名单并补充校验错误码。
+- [~] IN PROGRESS：补充配置错误码规范与设备不可用场景测试。
 
 ---
 
