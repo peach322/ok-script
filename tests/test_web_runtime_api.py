@@ -1,9 +1,14 @@
+import base64
 import http.client
 import importlib.util
 import json
+import logging
+import socket
 import tempfile
 import threading
+import time
 import unittest
+import uuid
 from pathlib import Path
 
 
@@ -34,10 +39,41 @@ class TestWebRuntimeApi(unittest.TestCase):
         self.thread.start()
 
     def tearDown(self):
+        if getattr(self.server, "runtime_stream", None) is not None:
+            self.server.runtime_stream.stop()
         self.server.shutdown()
         self.server.server_close()
         self.thread.join(timeout=2)
         self.temp_dir.cleanup()
+
+    @staticmethod
+    def _recv_exact(sock, n):
+        data = b""
+        while len(data) < n:
+            chunk = sock.recv(n - len(data))
+            if not chunk:
+                raise ConnectionError("socket closed")
+            data += chunk
+        return data
+
+    def _recv_ws_json(self, sock):
+        header = self._recv_exact(sock, 2)
+        payload_len = header[1] & 0x7F
+        if payload_len == 126:
+            payload_len = int.from_bytes(self._recv_exact(sock, 2), "big")
+        elif payload_len == 127:
+            payload_len = int.from_bytes(self._recv_exact(sock, 8), "big")
+        payload = self._recv_exact(sock, payload_len)
+        return json.loads(payload.decode("utf-8"))
+
+    def _wait_for_event(self, sock, event_name, timeout=3.0):
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            sock.settimeout(max(0.1, deadline - time.monotonic()))
+            payload = self._recv_ws_json(sock)
+            if payload.get("event") == event_name:
+                return payload
+        raise TimeoutError(f"Timed out waiting for websocket event: {event_name}")
 
     def _request_json(self, method, path, payload=None):
         connection = http.client.HTTPConnection("127.0.0.1", self.port, timeout=5)
@@ -98,6 +134,39 @@ class TestWebRuntimeApi(unittest.TestCase):
 
         self.assertEqual(400, response.status)
         self.assertEqual(400, payload["code"])
+
+    def test_runtime_websocket_stream_pushes_task_and_log_events(self):
+        ws_key = base64.b64encode(uuid.uuid4().bytes).decode("ascii")
+        sock = socket.create_connection(("127.0.0.1", self.port), timeout=5)
+        try:
+            request = (
+                "GET /ws/runtime HTTP/1.1\r\n"
+                f"Host: 127.0.0.1:{self.port}\r\n"
+                "Upgrade: websocket\r\n"
+                "Connection: Upgrade\r\n"
+                f"Sec-WebSocket-Key: {ws_key}\r\n"
+                "Sec-WebSocket-Version: 13\r\n"
+                "\r\n"
+            )
+            sock.sendall(request.encode("ascii"))
+            response = b""
+            while b"\r\n\r\n" not in response:
+                response += sock.recv(1024)
+            headers, _ = response.split(b"\r\n\r\n", 1)
+            self.assertIn("101 Switching Protocols", headers.decode("ascii"))
+
+            self.server.runtime_stream.publish_event("task_event", {"action": "start", "task": "TaskWS"})
+            task_event = self._wait_for_event(sock, "task_event")
+            self.assertEqual("start", task_event["data"]["action"])
+            self.assertEqual("TaskWS", task_event["data"]["task"])
+
+            marker = f"ws-log-{uuid.uuid4().hex}"
+            logging.getLogger("ok").warning(marker)
+            log_event = self._wait_for_event(sock, "log")
+            self.assertIn(marker, log_event["data"]["message"])
+            self.assertEqual("WARNING", log_event["data"]["level"])
+        finally:
+            sock.close()
 
 
 if __name__ == "__main__":

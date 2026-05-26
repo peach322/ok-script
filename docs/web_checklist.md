@@ -1,20 +1,21 @@
 # Web 改造 Checklist
 
 ## Architecture
-- Web 后端通过 `ok/web.py` 提供静态资源 + Runtime API（HTTP JSON），前端与 Runtime 控制通过 API 解耦。
+- Web 后端通过 `ok/web.py` 提供静态资源 + Runtime API（HTTP JSON）+ WebSocket Runtime Stream，前端与 Runtime 控制通过 API 解耦。
 - Runtime 控制复用 `OK` / `StartController` / `TaskExecutor` 现有核心能力，不复用 Qt UI 组件。
-- 当前仍为 HTTP API 阶段，WebSocket 流式层待下一优先级接入。
+- Runtime/log 推送由 `RuntimeEventStream` 管理客户端与广播，日志通过 logger handler 桥接到 websocket。
 
 ## API
 - `GET /api/runtime/status`：获取 runtime 初始化状态、执行器状态、当前任务、队列、任务列表状态。
 - `POST /api/runtime/start`：启动指定 one-time task（`task` 可选，`exit_after` 可选）。
 - `POST /api/runtime/stop`：停止指定任务或全量停止（禁用队列/触发任务并暂停执行器）。
+- `GET /ws/runtime`：建立 websocket 连接并接收 `hello`/`runtime_status`/`task_event`/`log`/`error` 事件。
 
 ## Runtime Flow
 1. `OK.startup_deploy_frontend()` 注入 `FrontendRuntimeAPI` 回调。
-2. `FrontendRequestHandler` 接收 `/api/runtime/*` 请求并调用 `OK` Runtime 回调。
-3. `OK.start_runtime_task()` 复用 `StartController.do_start()` 触发运行。
-4. `OK.stop_runtime_task()` 禁用任务并暂停执行器，`get_runtime_status()` 提供状态快照。
+2. `FrontendRequestHandler` 接收 `/api/runtime/*` 请求并调用 `OK` Runtime 回调，同时发布 `task_event`。
+3. `RuntimeEventStream` 通过 `/ws/runtime` 广播状态与日志：周期推送 `runtime_status`，日志推送 `log`。
+4. `OK.start_runtime_task()` 复用 `StartController.do_start()` 触发运行；`OK.stop_runtime_task()` 负责停止/暂停。
 
 ---
 
@@ -61,28 +62,39 @@
 ## Module: websocket runtime/log stream
 
 ### Goal
-- [ ] TODO：建立 websocket-first 的 runtime 状态与日志流。
+- [x] DONE：建立 websocket-first 的 runtime 状态与日志流最小闭环。
 
 ### Current Status
-- [ ] TODO：未实现。
+- [x] DONE：已实现 `/ws/runtime`、事件广播与日志桥接。
+- 实现说明：新增 `RuntimeEventStream`、`WebSocketLogHandler`、`RuntimeWebSocketClient`，支持 `hello/runtime_status/task_event/log/error` 事件。
+- 相关文件：`/home/runner/work/ok-script/ok-script/ok/web.py`
 
 ### API
-- [ ] TODO：定义 websocket 事件协议（runtime_status/log/task_event/error）。
+- [x] DONE：已定义并落地 websocket 事件协议（`hello` / `runtime_status` / `task_event` / `log` / `error`）。
 
 ### Frontend
 - [ ] TODO：建立 websocket 客户端连接与重连机制。
 
 ### Backend
-- [ ] TODO：将 runtime 与日志事件桥接到 websocket 广播层。
+- [x] DONE：runtime 状态（周期推送）与日志（logger handler）已桥接 websocket 广播层。
+- [ ] TODO：补充客户端背压与慢连接淘汰策略。
+- 优先级：P1
+- 依赖：无
 
 ### Tests
-- [ ] TODO：补充事件协议与断线重连测试。
+- [x] DONE：新增 websocket 握手与事件推送测试（task_event/log）。
+- 相关文件：`/home/runner/work/ok-script/ok-script/tests/test_web_runtime_api.py`
+- [ ] TODO：补充断线重连与高并发广播测试。
+- 优先级：P1
+- 依赖：无
 
 ### Risks
-- [ ] TODO：线程与事件并发安全、背压处理。
+- [ ] TODO：线程与事件并发安全、背压处理（当前慢连接仅在发送失败时清理）。
+- 优先级：P1
+- 依赖：runtime status panel（P1）实时刷新能力受其影响。
 
 ### Next Step
-- [ ] TODO：先定义事件 schema 与最小可用广播实现。
+- [~] IN PROGRESS：推进 runtime status panel 对接 websocket 事件与重连机制。
 
 ---
 
