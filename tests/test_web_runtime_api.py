@@ -23,10 +23,17 @@ class TestWebRuntimeApi(unittest.TestCase):
         self.temp_dir = tempfile.TemporaryDirectory()
         Path(self.temp_dir.name, "index.html").write_text("ok", encoding="utf-8")
         self.calls = []
+        self.config_data = {
+            "runtime": {"debug": False, "use_gui": False},
+            "browser": {"url": "http://127.0.0.1:10086", "nick": "Browser"},
+            "device": {"preferred": "browser", "capture": "browser", "interaction": ""},
+        }
         runtime_api = ok_web.FrontendRuntimeAPI(
             start_task=self._start_task,
             stop_task=self._stop_task,
             get_status=self._get_status,
+            get_config=self._get_config,
+            update_config=self._update_config,
         )
         self.server, _ = ok_web.create_frontend_server(
             path=self.temp_dir.name,
@@ -35,6 +42,7 @@ class TestWebRuntimeApi(unittest.TestCase):
             runtime_api=runtime_api,
         )
         self.port = self.server.server_address[1]
+        self._ws_buffer = b""
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
 
@@ -46,24 +54,32 @@ class TestWebRuntimeApi(unittest.TestCase):
         self.thread.join(timeout=2)
         self.temp_dir.cleanup()
 
-    @staticmethod
-    def _recv_exact(sock, n):
-        data = b""
-        while len(data) < n:
-            chunk = sock.recv(n - len(data))
+    def _recv_ws_json(self, sock):
+        while len(self._ws_buffer) < 2:
+            chunk = sock.recv(4096)
             if not chunk:
                 raise ConnectionError("socket closed")
-            data += chunk
-        return data
-
-    def _recv_ws_json(self, sock):
-        header = self._recv_exact(sock, 2)
+            self._ws_buffer += chunk
+        header = self._ws_buffer[:2]
+        self._ws_buffer = self._ws_buffer[2:]
         payload_len = header[1] & 0x7F
         if payload_len == 126:
-            payload_len = int.from_bytes(self._recv_exact(sock, 2), "big")
+            while len(self._ws_buffer) < 2:
+                self._ws_buffer += sock.recv(4096)
+            payload_len = int.from_bytes(self._ws_buffer[:2], "big")
+            self._ws_buffer = self._ws_buffer[2:]
         elif payload_len == 127:
-            payload_len = int.from_bytes(self._recv_exact(sock, 8), "big")
-        payload = self._recv_exact(sock, payload_len)
+            while len(self._ws_buffer) < 8:
+                self._ws_buffer += sock.recv(4096)
+            payload_len = int.from_bytes(self._ws_buffer[:8], "big")
+            self._ws_buffer = self._ws_buffer[8:]
+        while len(self._ws_buffer) < payload_len:
+            chunk = sock.recv(4096)
+            if not chunk:
+                raise ConnectionError("socket closed")
+            self._ws_buffer += chunk
+        payload = self._ws_buffer[:payload_len]
+        self._ws_buffer = self._ws_buffer[payload_len:]
         return json.loads(payload.decode("utf-8"))
 
     def _wait_for_event(self, sock, event_name, timeout=3.0):
@@ -96,6 +112,19 @@ class TestWebRuntimeApi(unittest.TestCase):
     def _get_status(self):
         self.calls.append(("status",))
         return {"initialized": True, "current_task": "TaskA"}
+
+    def _get_config(self):
+        self.calls.append(("config_get",))
+        return self.config_data
+
+    def _update_config(self, patch):
+        self.calls.append(("config_update", patch))
+        for key, value in patch.items():
+            if isinstance(value, dict) and isinstance(self.config_data.get(key), dict):
+                self.config_data[key].update(value)
+            else:
+                self.config_data[key] = value
+        return {"applied": patch, "config": self.config_data}
 
     def test_runtime_status_start_stop_api(self):
         status_code, payload = self._request_json("GET", "/api/runtime/status")
@@ -135,6 +164,21 @@ class TestWebRuntimeApi(unittest.TestCase):
         self.assertEqual(400, response.status)
         self.assertEqual(400, payload["code"])
 
+    def test_config_get_and_update_api(self):
+        status_code, payload = self._request_json("GET", "/api/config/get")
+        self.assertEqual(200, status_code)
+        self.assertEqual("Browser", payload["data"]["browser"]["nick"])
+
+        status_code, payload = self._request_json(
+            "POST",
+            "/api/config/update",
+            {"browser": {"nick": "Browser2"}, "runtime": {"debug": True}},
+        )
+        self.assertEqual(200, status_code)
+        self.assertEqual("config updated", payload["message"])
+        self.assertEqual("Browser2", payload["data"]["config"]["browser"]["nick"])
+        self.assertTrue(payload["data"]["config"]["runtime"]["debug"])
+
     def test_runtime_websocket_stream_pushes_task_and_log_events(self):
         ws_key = base64.b64encode(uuid.uuid4().bytes).decode("ascii")
         sock = socket.create_connection(("127.0.0.1", self.port), timeout=5)
@@ -152,8 +196,11 @@ class TestWebRuntimeApi(unittest.TestCase):
             response = b""
             while b"\r\n\r\n" not in response:
                 response += sock.recv(1024)
-            headers, _ = response.split(b"\r\n\r\n", 1)
+            headers, remainder = response.split(b"\r\n\r\n", 1)
             self.assertIn("101 Switching Protocols", headers.decode("ascii"))
+            self._ws_buffer = remainder
+            hello_event = self._wait_for_event(sock, "hello")
+            self.assertEqual("runtime-stream.v1", hello_event["data"]["protocol"])
 
             self.server.runtime_stream.publish_event("task_event", {"action": "start", "task": "TaskWS"})
             task_event = self._wait_for_event(sock, "task_event")

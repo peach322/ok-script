@@ -430,6 +430,8 @@ class OK:
             start_task=self.start_runtime_task,
             stop_task=self.stop_runtime_task,
             get_status=self.get_runtime_status,
+            get_config=self.get_runtime_config,
+            update_config=self.update_runtime_config,
         )
         try:
             self.frontend_server, self.frontend_server_thread, deployed_path, url = start_frontend_server(
@@ -520,6 +522,76 @@ class OK:
         if not self.task_executor.paused:
             self.task_executor.pause()
         return {"stopped_tasks": list(dict.fromkeys(stopped_names))}
+
+    def get_runtime_config(self):
+        browser_config = dict(self.config.get("browser") or {})
+        runtime_config = {
+            "debug": bool(self.config.get("debug", False)),
+            "use_gui": bool(self.config.get("use_gui", True)),
+        }
+        device_config = {}
+        if self.device_manager is not None:
+            device_config = {
+                "preferred": self.device_manager.config.get("preferred"),
+                "capture": self.device_manager.config.get("capture"),
+                "interaction": self.device_manager.config.get("interaction"),
+            }
+        return {
+            "runtime": runtime_config,
+            "browser": browser_config,
+            "device": device_config,
+        }
+
+    def update_runtime_config(self, config_patch):
+        if not isinstance(config_patch, dict):
+            raise ValueError("config patch must be an object")
+        applied = {}
+
+        browser_patch = config_patch.get("browser")
+        if browser_patch is not None:
+            if not isinstance(browser_patch, dict):
+                raise ValueError("browser config patch must be an object")
+            browser_config = self.config.setdefault("browser", {})
+            browser_config.update(browser_patch)
+            applied["browser"] = dict(browser_config)
+            if self.device_manager is not None:
+                if not getattr(self.device_manager, "browser_config", None):
+                    self.device_manager.browser_config = {}
+                self.device_manager.browser_config.update(browser_patch)
+                self.device_manager.update_browser_device()
+
+        device_patch = config_patch.get("device")
+        if device_patch is not None:
+            if not isinstance(device_patch, dict):
+                raise ValueError("device config patch must be an object")
+            if self.device_manager is None:
+                raise RuntimeError("Device manager is not initialized")
+            if "preferred" in device_patch:
+                self.device_manager.set_preferred_device(device_patch["preferred"])
+            if "capture" in device_patch:
+                self.device_manager.set_capture(device_patch["capture"])
+            if "interaction" in device_patch:
+                self.device_manager.set_interaction(device_patch["interaction"])
+            applied["device"] = {
+                "preferred": self.device_manager.config.get("preferred"),
+                "capture": self.device_manager.config.get("capture"),
+                "interaction": self.device_manager.config.get("interaction"),
+            }
+
+        runtime_patch = config_patch.get("runtime")
+        if runtime_patch is not None:
+            if not isinstance(runtime_patch, dict):
+                raise ValueError("runtime config patch must be an object")
+            if "debug" in runtime_patch:
+                self.config["debug"] = bool(runtime_patch["debug"])
+            if "use_gui" in runtime_patch:
+                self.config["use_gui"] = bool(runtime_patch["use_gui"])
+            applied["runtime"] = {
+                "debug": bool(self.config.get("debug", False)),
+                "use_gui": bool(self.config.get("use_gui", True)),
+            }
+
+        return {"applied": applied, "config": self.get_runtime_config()}
 
     def start(self):
         logger.info(f'OK start id:{id(self)} pid:{os.getpid()}')

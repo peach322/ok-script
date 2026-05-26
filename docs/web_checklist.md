@@ -9,6 +9,8 @@
 - `GET /api/runtime/status`：获取 runtime 初始化状态、执行器状态、当前任务、队列、任务列表状态。
 - `POST /api/runtime/start`：启动指定 one-time task（`task` 可选，`exit_after` 可选）。
 - `POST /api/runtime/stop`：停止指定任务或全量停止（禁用队列/触发任务并暂停执行器）。
+- `GET /api/config/get`：获取 runtime/browser/device 当前配置快照。
+- `POST /api/config/update`：更新 runtime/browser/device 配置补丁并返回最新配置。
 - `GET /ws/runtime`：建立 websocket 连接并接收 `hello`/`runtime_status`/`task_event`/`log`/`error` 事件。
 
 ## Runtime Flow
@@ -16,6 +18,7 @@
 2. `FrontendRequestHandler` 接收 `/api/runtime/*` 请求并调用 `OK` Runtime 回调，同时发布 `task_event`。
 3. `RuntimeEventStream` 通过 `/ws/runtime` 广播状态与日志：周期推送 `runtime_status`，日志推送 `log`。
 4. `OK.start_runtime_task()` 复用 `StartController.do_start()` 触发运行；`OK.stop_runtime_task()` 负责停止/暂停。
+5. 配置通过 `OK.get_runtime_config()/update_runtime_config()` 统一暴露与应用，并可触发 stream `config_event`。
 
 ---
 
@@ -101,28 +104,37 @@
 ## Module: config api integration
 
 ### Goal
-- [ ] TODO：提供配置读取/更新 API。
+- [x] DONE：提供配置读取/更新 API。
 
 ### Current Status
-- [ ] TODO：未实现。
+- [x] DONE：已实现 `/api/config/get` 与 `/api/config/update` 最小闭环。
+- 实现说明：`FrontendRuntimeAPI` 增加 config 回调，`OK` 新增 `get_runtime_config/update_runtime_config`，支持 runtime/browser/device 配置补丁。
+- 相关文件：`/home/runner/work/ok-script/ok-script/ok/web.py`，`/home/runner/work/ok-script/ok-script/ok/__init__.py`
 
 ### API
-- [ ] TODO：定义 `/api/config/get`、`/api/config/update`。
+- [x] DONE：`GET /api/config/get`
+- [x] DONE：`POST /api/config/update`
 
 ### Frontend
 - [ ] TODO：配置面板对接 API。
 
 ### Backend
-- [ ] TODO：复用 `Config` / `GlobalConfig` 并增加校验返回。
+- [~] IN PROGRESS：已复用 runtime/device/browser 现有配置结构，仍需补充字段级校验与白名单策略。
 
 ### Tests
-- [ ] TODO：配置读写与校验失败测试。
+- [x] DONE：新增 config get/update API 测试。
+- 相关文件：`/home/runner/work/ok-script/ok-script/tests/test_web_runtime_api.py`
+- [ ] TODO：补充非法字段/非法类型/设备不可用场景测试。
+- 优先级：P1
+- 依赖：无
 
 ### Risks
-- [ ] TODO：配置热更新时与任务执行状态冲突。
+- [ ] TODO：配置热更新时与任务执行状态冲突（特别是运行中切换 capture/interaction）。
+- 优先级：P1
+- 依赖：runtime status panel 需要展示配置变更失败原因。
 
 ### Next Step
-- [ ] TODO：先梳理可安全热更新的配置字段白名单。
+- [~] IN PROGRESS：梳理可安全热更新字段白名单并补充校验错误码。
 
 ---
 

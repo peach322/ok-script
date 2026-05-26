@@ -16,10 +16,12 @@ ALL_INTERFACES = "0.0.0.0"
 
 
 class FrontendRuntimeAPI:
-    def __init__(self, start_task=None, stop_task=None, get_status=None):
+    def __init__(self, start_task=None, stop_task=None, get_status=None, get_config=None, update_config=None):
         self._start_task = start_task
         self._stop_task = stop_task
         self._get_status = get_status
+        self._get_config = get_config
+        self._update_config = update_config
 
     def get_status(self):
         if not callable(self._get_status):
@@ -35,6 +37,16 @@ class FrontendRuntimeAPI:
         if not callable(self._stop_task):
             raise RuntimeError("Runtime stop API is not configured")
         return self._stop_task(task=task)
+
+    def get_config(self):
+        if not callable(self._get_config):
+            raise RuntimeError("Config get API is not configured")
+        return self._get_config()
+
+    def update_config(self, config):
+        if not callable(self._update_config):
+            raise RuntimeError("Config update API is not configured")
+        return self._update_config(config)
 
 
 class RuntimeWebSocketClient:
@@ -236,6 +248,12 @@ class FrontendRequestHandler(SimpleHTTPRequestHandler):
             except Exception as e:
                 self._error(500, str(e))
             return
+        if path == "/api/config/get":
+            try:
+                self._ok(self.runtime_api.get_config())
+            except Exception as e:
+                self._error(500, str(e))
+            return
         if path.startswith("/api/"):
             self._error(404, f"Unknown API path: {path}")
             return
@@ -269,6 +287,21 @@ class FrontendRequestHandler(SimpleHTTPRequestHandler):
                 if self.runtime_stream:
                     self.runtime_stream.publish_event("task_event", {"action": "stop", "task": task})
                 self._ok(result, "runtime stopped")
+            except ValueError as e:
+                self._error(400, str(e))
+            except Exception as e:
+                self._error(500, str(e))
+            return
+        if path == "/api/config/update":
+            try:
+                payload = self._read_json_body()
+                if not isinstance(payload, dict):
+                    raise ValueError("Request body must be a JSON object")
+                result = self.runtime_api.update_config(payload)
+                if self.runtime_stream:
+                    self.runtime_stream.publish_event("config_event", {"action": "update"})
+                    self.runtime_stream.publish_runtime_status()
+                self._ok(result, "config updated")
             except ValueError as e:
                 self._error(400, str(e))
             except Exception as e:
