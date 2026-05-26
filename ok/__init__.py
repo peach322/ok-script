@@ -44,7 +44,7 @@ from ok.feature.Box import Box, find_boxes_by_name, relative_box, crop_image, av
 from ok.task.exceptions import CannotFindException, TaskDisabledException, FinishedException, WaitFailedException, \
     CaptureException
 from ok.util.collection import safe_get
-from ok.web import start_frontend_server
+from ok.web import start_frontend_server, FrontendRuntimeAPI
 
 from ok.util.color import find_color_rectangles, mask_white, find_color_rectangles, color_range_to_bound, \
     calculate_color_percentage, get_mask_in_color_range, is_pure_black
@@ -426,15 +426,100 @@ class OK:
             return
         host = browser_config.get('host', '127.0.0.1')
         port = browser_config.get('port', 10086)
+        runtime_api = FrontendRuntimeAPI(
+            start_task=self.start_runtime_task,
+            stop_task=self.stop_runtime_task,
+            get_status=self.get_runtime_status,
+        )
         try:
             self.frontend_server, self.frontend_server_thread, deployed_path, url = start_frontend_server(
-                path=frontend_path, host=host, port=port
+                path=frontend_path, host=host, port=port, runtime_api=runtime_api
             )
             if not browser_config.get('url'):
                 browser_config['url'] = url
             logger.info(f"Frontend deployed on startup: {deployed_path}, url={url}")
         except Exception as e:
             logger.error(f"Frontend startup deployment failed: {e}")
+
+    def _runtime_task_to_dict(self, task):
+        return {
+            "name": task.name,
+            "enabled": task.enabled,
+            "running": task.running,
+            "paused": getattr(task, "paused", False),
+            "status": task.get_status(),
+        }
+
+    def get_runtime_status(self):
+        if self.task_executor is None:
+            return {
+                "initialized": False,
+                "executor_running": False,
+                "executor_paused": False,
+                "current_task": None,
+                "queue": [],
+                "onetime_tasks": [],
+                "trigger_tasks": [],
+            }
+        with self.task_executor.lock:
+            queue = [task.name for task in self.task_executor.onetime_task_queue if task.enabled]
+        return {
+            "initialized": True,
+            "executor_running": self.task_executor.thread is not None and self.task_executor.thread.is_alive(),
+            "executor_paused": self.task_executor.paused,
+            "current_task": self.task_executor.current_task.name if self.task_executor.current_task else None,
+            "queue": queue,
+            "onetime_tasks": [self._runtime_task_to_dict(task) for task in self.task_executor.onetime_tasks],
+            "trigger_tasks": [self._runtime_task_to_dict(task) for task in self.task_executor.trigger_tasks],
+        }
+
+    def start_runtime_task(self, task=None, exit_after=False):
+        if self.task_executor is None:
+            raise RuntimeError("Task executor is not initialized")
+        selected_task = None
+        if task not in (None, ""):
+            selected_task, is_trigger_task = self.get_task(task)
+            if is_trigger_task:
+                raise ValueError("Trigger task is not supported by runtime start API")
+        started = self.headless_app.start_controller.do_start(selected_task, exit_after=exit_after)
+        if not started:
+            raise RuntimeError("Start task failed")
+        return {
+            "started": True,
+            "task": selected_task.name if selected_task else None,
+            "exit_after": bool(exit_after),
+        }
+
+    def stop_runtime_task(self, task=None):
+        if self.task_executor is None:
+            raise RuntimeError("Task executor is not initialized")
+
+        stopped_names = []
+        if task not in (None, ""):
+            selected_task, _ = self.get_task(task)
+            if selected_task.enabled:
+                selected_task.disable()
+                stopped_names.append(selected_task.name)
+            if selected_task.paused:
+                selected_task.unpause()
+            if self.task_executor.current_task == selected_task:
+                self.task_executor.stop_current_task()
+            return {"stopped_tasks": list(dict.fromkeys(stopped_names))}
+
+        self.task_executor.stop_current_task()
+        for queued_task in self.task_executor.onetime_tasks:
+            if queued_task.enabled:
+                queued_task.disable()
+                stopped_names.append(queued_task.name)
+            if queued_task.paused:
+                queued_task.unpause()
+        for trigger_task in self.task_executor.trigger_tasks:
+            if trigger_task.enabled:
+                trigger_task.disable()
+                stopped_names.append(trigger_task.name)
+        if not self.task_executor.paused:
+            self.task_executor.pause()
+        return {"stopped_tasks": list(dict.fromkeys(stopped_names))}
 
     def start(self):
         logger.info(f'OK start id:{id(self)} pid:{os.getpid()}')
